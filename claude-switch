@@ -1,0 +1,129 @@
+#!/bin/bash
+# claude-switch - Switch Claude Code between Anthropic API and local Ollama
+
+OLLAMA_HOST="YOUR_OLLAMA_HOST"
+OLLAMA_PORT="11434"
+CONFIG_FILE="$HOME/.claude-code-router/config.json"
+
+usage() {
+    echo "Usage: claude-switch [anthropic|ollama|status|test]"
+    echo ""
+    echo "Commands:"
+    echo "  anthropic  - Use Anthropic's Claude API (default)"
+    echo "  ollama     - Use local Ollama on CasaOS"
+    echo "  status     - Show current mode"
+    echo "  test       - Test Ollama connectivity"
+    echo ""
+}
+
+test_ollama() {
+    echo "Testing Ollama at http://$OLLAMA_HOST:$OLLAMA_PORT..."
+    if curl -s --connect-timeout 5 "http://$OLLAMA_HOST:$OLLAMA_PORT/api/tags" > /dev/null 2>&1; then
+        echo "✓ Ollama is reachable"
+        echo ""
+        echo "Available models:"
+        curl -s "http://$OLLAMA_HOST:$OLLAMA_PORT/api/tags" | jq -r '.models[].name' 2>/dev/null || \
+            curl -s "http://$OLLAMA_HOST:$OLLAMA_PORT/api/tags"
+        return 0
+    else
+        echo "✗ Ollama is not reachable"
+        return 1
+    fi
+}
+
+switch_to_anthropic() {
+    echo "Switching to Anthropic API..."
+
+    # Update router config
+    if [ -f "$CONFIG_FILE" ]; then
+        # Use jq if available, otherwise sed
+        if command -v jq &> /dev/null; then
+            jq '.router.default = "anthropic,claude-sonnet-4-20250514"' "$CONFIG_FILE" > "$CONFIG_FILE.tmp" && \
+                mv "$CONFIG_FILE.tmp" "$CONFIG_FILE"
+        else
+            sed -i '' 's/"default":.*"ollama[^"]*"/"default": "anthropic,claude-sonnet-4-20250514"/' "$CONFIG_FILE"
+        fi
+    fi
+
+    # Unset direct Ollama vars, use standard Anthropic
+    unset ANTHROPIC_BASE_URL
+    export ANTHROPIC_AUTH_TOKEN="${ANTHROPIC_API_KEY}"
+
+    echo "✓ Switched to Anthropic API"
+    echo ""
+    echo "Run this in your shell to apply:"
+    echo '  unset ANTHROPIC_BASE_URL'
+}
+
+switch_to_ollama() {
+    echo "Switching to local Ollama..."
+
+    # Test connectivity first
+    if ! test_ollama; then
+        echo ""
+        echo "Warning: Ollama not reachable, but setting variables anyway"
+    fi
+
+    # Update router config
+    if [ -f "$CONFIG_FILE" ]; then
+        if command -v jq &> /dev/null; then
+            # Get first available ollama model from config
+            MODEL=$(jq -r '.providers[] | select(.name=="ollama") | .models[0]' "$CONFIG_FILE")
+            jq --arg model "ollama,$MODEL" '.router.default = $model' "$CONFIG_FILE" > "$CONFIG_FILE.tmp" && \
+                mv "$CONFIG_FILE.tmp" "$CONFIG_FILE"
+        else
+            sed -i '' 's/"default":.*"anthropic[^"]*"/"default": "ollama,qwen2.5-coder:7b"/' "$CONFIG_FILE"
+        fi
+    fi
+
+    echo "✓ Switched to Ollama"
+    echo ""
+    echo "Run this in your shell to apply (for direct mode without router):"
+    echo "  export ANTHROPIC_BASE_URL=http://$OLLAMA_HOST:$OLLAMA_PORT"
+    echo "  export ANTHROPIC_AUTH_TOKEN=ollama"
+}
+
+show_status() {
+    echo "=== Claude Code Status ==="
+    echo ""
+
+    if [ -n "$ANTHROPIC_BASE_URL" ]; then
+        echo "Mode: Direct connection"
+        echo "Base URL: $ANTHROPIC_BASE_URL"
+    else
+        echo "Mode: Standard Anthropic API (or via router)"
+    fi
+
+    echo ""
+    echo "Router config default:"
+    if [ -f "$CONFIG_FILE" ]; then
+        if command -v jq &> /dev/null; then
+            jq -r '.router.default' "$CONFIG_FILE"
+        else
+            grep '"default"' "$CONFIG_FILE"
+        fi
+    else
+        echo "  (no router config found)"
+    fi
+
+    echo ""
+    test_ollama
+}
+
+case "${1:-status}" in
+    anthropic|cloud|api)
+        switch_to_anthropic
+        ;;
+    ollama|local)
+        switch_to_ollama
+        ;;
+    status)
+        show_status
+        ;;
+    test)
+        test_ollama
+        ;;
+    *)
+        usage
+        ;;
+esac
