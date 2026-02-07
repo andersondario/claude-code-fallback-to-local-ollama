@@ -10,10 +10,14 @@ echo ""
 echo "1. Installing claude-code-router..."
 npm install -g @musistudio/claude-code-router
 
-# Create config directory
+# Create config directory and install plugin
 echo "2. Setting up config..."
-mkdir -p ~/.claude-code-router
+mkdir -p ~/.claude-code-router/plugins
 cp config.json ~/.claude-code-router/config.json
+cp plugins/strip-thinking.js ~/.claude-code-router/plugins/strip-thinking.js
+
+# Resolve $HOME in config path (ccr doesn't expand $HOME)
+sed -i '' "s|\$HOME|$HOME|g" ~/.claude-code-router/config.json
 
 # Install switching script
 echo "3. Installing claude-switch script..."

@@ -7,11 +7,12 @@ Switch Claude Code between Anthropic API and a local Ollama instance when the AP
 - [Node.js](https://nodejs.org/) (for npm)
 - [Ollama](https://ollama.com/) running on your network — you can run it on [CasaOS](https://casaos.zimaspace.com/), a Raspberry Pi, or any local server on your LAN
 - [jq](https://jqlang.github.io/jq/) (optional, for better JSON handling)
+- **A GPU is strongly recommended.** CPU-only inference is very slow, even with small models. See [Hardware Notes](#hardware-notes) below.
 
 ## Installation
 
 ```bash
-git clone https://github.com/yourusername/claude-code-fallback-to-local-ollama.git
+git clone https://github.com/andersondario/claude-code-fallback-to-local-ollama.git
 cd claude-code-fallback-to-local-ollama
 ./install.sh
 source ~/.zshrc
@@ -19,7 +20,7 @@ source ~/.zshrc
 
 This will:
 1. Install [claude-code-router](https://github.com/musistudio/claude-code-router) globally
-2. Copy config to `~/.claude-code-router/config.json`
+2. Copy config and `strip-thinking` plugin to `~/.claude-code-router/`
 3. Install `claude-switch` script to `~/bin/`
 4. Add `~/bin` to your PATH
 
@@ -46,6 +47,11 @@ The router configuration lives at `~/.claude-code-router/config.json` and define
 {
   "LOG": true,                   // Enable request logging
   "API_TIMEOUT_MS": 120000,      // Request timeout (120s) — increase for slow models
+  "transformers": [              // Custom transformer plugins
+    {
+      "path": "/absolute/path/to/.claude-code-router/plugins/strip-thinking.js"
+    }
+  ],
   "Providers": [
     {
       "name": "anthropic",
@@ -57,19 +63,14 @@ The router configuration lives at `~/.claude-code-router/config.json` and define
       "name": "ollama",
       "api_base_url": "http://YOUR_OLLAMA_HOST:11434/v1/chat/completions",
       "api_key": "ollama",               // Ollama doesn't need a real key
+      "transformer": {
+        "use": ["strip-thinking"]        // Required: strips thinking params local models don't support
+      },
       "models": [
-        "qwen3:32b", "qwen3:14b", "qwen3:8b",
-        "qwen2.5-coder:32b", "qwen2.5-coder:14b", "qwen2.5-coder:7b",
+        "qwen2.5-coder:1.5b", "qwen2.5-coder:7b",
+        "qwen2.5-coder:14b", "qwen2.5-coder:32b",
         "deepseek-coder-v2:16b", "deepseek-coder-v2:lite",
-        "deepseek-coder:33b", "deepseek-coder:6.7b",
-        "codellama:34b", "codellama:13b", "codellama:7b",
-        "starcoder2:15b", "starcoder2:7b", "starcoder2:3b",
-        "codegemma:7b", "codegemma:2b",
-        "granite-code:34b", "granite-code:20b", "granite-code:8b",
-        "yi-coder:9b",
-        "phi3:14b", "phi3:mini",
-        "llama3.1:70b", "llama3.1:8b",
-        "mistral:7b", "mixtral:8x7b"
+        "codellama:7b", "codellama:13b"
       ]
     }
   ],
@@ -79,6 +80,14 @@ The router configuration lives at `~/.claude-code-router/config.json` and define
 }
 ```
 
+> **Important:** Config keys `Providers` and `Router` must be PascalCase (required by `ccr` v2.x). Lowercase keys will be silently ignored.
+
+> **Important:** The `transformers[].path` must be an absolute path. The `install.sh` script handles this automatically, but if you edit the config manually, make sure to use the full path (not `~`).
+
+### The `strip-thinking` Plugin
+
+Claude Code sends "extended thinking" parameters with its API requests. Local models don't support this and will reject the request with an error like `"model does not support thinking"`. The included `strip-thinking` plugin removes these parameters before they reach Ollama.
+
 ### Key Settings
 
 | Field | Description |
@@ -86,13 +95,13 @@ The router configuration lives at `~/.claude-code-router/config.json` and define
 | `LOG` | Enables logging of routed requests. Set to `false` to disable. |
 | `API_TIMEOUT_MS` | Timeout in milliseconds. Increase if large models take long to respond. |
 | `Providers[].api_key` | For Anthropic, uses `$ANTHROPIC_API_KEY` from your environment. For Ollama, any non-empty string works. |
-| `Providers[].models` | List of models the router will accept for each provider. You only need to list the models you have pulled in Ollama. |
+| `Providers[].models` | List of models the router will accept for each provider. Only list models you have pulled in Ollama. |
 | `Router.default` | The provider and model used on startup, in `provider,model` format. |
 
 ### Customizing
 
 - **Add/remove Ollama models** — Edit the `models` array under the `ollama` provider to match what you have pulled. Only listed models can be selected via `/model`.
-- **Change the default model** — Update `Router.default` to any `provider,model` combo (e.g. `"ollama,qwen3:32b"` to default to local).
+- **Change the default model** — Update `Router.default` to any `provider,model` combo (e.g. `"ollama,qwen2.5-coder:7b"` to default to local).
 - **Add another provider** — Add a new object to the `Providers` array with its own `name`, `api_base_url`, `api_key`, and `models`. Any OpenAI-compatible API works (e.g. OpenRouter, LM Studio).
 
 ## Usage
@@ -113,7 +122,15 @@ claude-switch anthropic
 claude-switch test
 ```
 
+After switching, restart the router for changes to take effect:
+
+```bash
+ccr restart
+```
+
 ### Using the Router
+
+**You must start Claude Code through the router** — running `claude` directly bypasses it entirely.
 
 ```bash
 # Start Claude Code via router
@@ -127,8 +144,8 @@ claude
 ### Switch Models Inside Claude Code
 
 ```
-/model ollama,deepseek-coder-v2:latest
 /model ollama,qwen2.5-coder:7b
+/model ollama,qwen2.5-coder:1.5b
 /model anthropic,claude-sonnet-4-20250514
 ```
 
@@ -138,29 +155,40 @@ Pull coding models to your Ollama instance:
 
 ```bash
 # Via API (from any machine)
-curl -X POST http://YOUR_OLLAMA_IP:11434/api/pull -d '{"name": "qwen2.5-coder:7b"}'
+curl -X POST http://YOUR_OLLAMA_HOST:11434/api/pull -d '{"name": "qwen2.5-coder:7b"}'
 
 # Or SSH to Ollama host
 ollama pull qwen2.5-coder:7b
-ollama pull deepseek-coder-v2
 ```
 
 ### Recommended Models
 
 | Model | Size | VRAM | Notes |
 |-------|------|------|-------|
-| qwen2.5-coder:7b | 4GB | 5GB | Fast, good quality |
+| qwen2.5-coder:1.5b | 1GB | 2GB | Fastest, lower quality. Good for CPU-only. |
+| qwen2.5-coder:7b | 4GB | 5GB | Good balance of speed and quality |
 | qwen2.5-coder:14b | 9GB | 10GB | Better quality |
 | qwen2.5-coder:32b | 18GB | 20GB | Best Qwen coder |
 | deepseek-coder-v2 | 8GB | 10GB | Great for code |
 | codellama:7b | 4GB | 5GB | Meta's code model |
-| starcoder2:7b | 4GB | 5GB | Good alternative |
+
+## Hardware Notes
+
+Running LLMs locally requires significant compute power. A **GPU is strongly recommended** — CPU-only inference is very slow even for small models (1.5B).
+
+| Setup | Performance | Notes |
+|-------|-------------|-------|
+| CPU only | Very slow | Minutes per response, not practical for interactive use |
+| NVIDIA GPU (e.g. RTX 3060 12GB) | Good | Native CUDA support via standard Ollama |
+| AMD GPU (RX 6600+, gfx900+) | Good | Requires Ollama ROCm build. Older AMD GPUs (RX 570/580, Polaris) are **not supported** by ROCm |
+| Apple Silicon | Good | Ollama uses Metal acceleration natively |
 
 ## Files
 
 | File | Location | Purpose |
 |------|----------|---------|
 | `config.json` | `~/.claude-code-router/` | Router configuration |
+| `plugins/strip-thinking.js` | `~/.claude-code-router/plugins/` | Strips thinking params for local models |
 | `claude-switch` | `~/bin/` | Switching script |
 
 ## Troubleshooting
@@ -169,17 +197,34 @@ ollama pull deepseek-coder-v2
 
 ```bash
 # Test connectivity
-curl http://YOUR_OLLAMA_IP:11434/api/tags
+curl http://YOUR_OLLAMA_HOST:11434/api/tags
 
 # Check if Ollama is running
 docker ps | grep ollama
+```
+
+### "Does not support thinking" error
+
+Make sure the `strip-thinking` transformer is configured for the Ollama provider in your `config.json`. See [Config File Structure](#config-file-structure) above.
+
+### Router ignoring config / still using Anthropic
+
+1. Make sure config keys are PascalCase: `Providers` (not `providers`), `Router` (not `router`)
+2. Restart the router after config changes: `ccr restart`
+3. Start Claude Code through the router: `ccr code` (not `claude` directly)
+
+### Check GPU usage in Ollama
+
+```bash
+# Shows size_vram > 0 if GPU is being used
+curl http://YOUR_OLLAMA_HOST:11434/api/ps
 ```
 
 ### Models not showing
 
 ```bash
 # List installed models
-curl http://YOUR_OLLAMA_IP:11434/api/tags | jq '.models[].name'
+curl http://YOUR_OLLAMA_HOST:11434/api/tags | jq '.models[].name'
 ```
 
 ### Router not working
@@ -196,4 +241,3 @@ npm install -g @musistudio/claude-code-router
 
 - [Claude Code Router](https://github.com/musistudio/claude-code-router)
 - [Ollama](https://ollama.com/)
-- [Medium Article](https://medium.com/@luongnv89/run-claude-code-on-local-cloud-models-in-5-minutes-ollama-openrouter-llama-cpp-6dfeaee03cda)
