@@ -46,7 +46,7 @@ The router configuration lives at `~/.claude-code-router/config.json` and define
 {
   "LOG": true,                   // Enable request logging
   "API_TIMEOUT_MS": 120000,      // Request timeout (120s) — increase for slow models
-  "providers": [
+  "Providers": [
     {
       "name": "anthropic",
       "api_base_url": "https://api.anthropic.com/v1/messages",
@@ -73,7 +73,7 @@ The router configuration lives at `~/.claude-code-router/config.json` and define
       ]
     }
   ],
-  "router": {
+  "Router": {
     "default": "anthropic,claude-sonnet-4-20250514"  // format: provider,model
   }
 }
@@ -85,15 +85,15 @@ The router configuration lives at `~/.claude-code-router/config.json` and define
 |-------|-------------|
 | `LOG` | Enables logging of routed requests. Set to `false` to disable. |
 | `API_TIMEOUT_MS` | Timeout in milliseconds. Increase if large models take long to respond. |
-| `providers[].api_key` | For Anthropic, uses `$ANTHROPIC_API_KEY` from your environment. For Ollama, any non-empty string works. |
-| `providers[].models` | List of models the router will accept for each provider. You only need to list the models you have pulled in Ollama. |
-| `router.default` | The provider and model used on startup, in `provider,model` format. |
+| `Providers[].api_key` | For Anthropic, uses `$ANTHROPIC_API_KEY` from your environment. For Ollama, any non-empty string works. |
+| `Providers[].models` | List of models the router will accept for each provider. You only need to list the models you have pulled in Ollama. |
+| `Router.default` | The provider and model used on startup, in `provider,model` format. |
 
 ### Customizing
 
 - **Add/remove Ollama models** — Edit the `models` array under the `ollama` provider to match what you have pulled. Only listed models can be selected via `/model`.
-- **Change the default model** — Update `router.default` to any `provider,model` combo (e.g. `"ollama,qwen3:32b"` to default to local).
-- **Add another provider** — Add a new object to the `providers` array with its own `name`, `api_base_url`, `api_key`, and `models`. Any OpenAI-compatible API works (e.g. OpenRouter, LM Studio).
+- **Change the default model** — Update `Router.default` to any `provider,model` combo (e.g. `"ollama,qwen3:32b"` to default to local).
+- **Add another provider** — Add a new object to the `Providers` array with its own `name`, `api_base_url`, `api_key`, and `models`. Any OpenAI-compatible API works (e.g. OpenRouter, LM Studio).
 
 ## Usage
 

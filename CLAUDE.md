@@ -17,6 +17,7 @@ There is no build system or application code. The project consists of:
 ## Key Details
 
 - Ollama host placeholder is `YOUR_OLLAMA_HOST` in both `claude-switch` and `config.json` -- users must edit these after install.
+- The router config keys are PascalCase (`Providers`, `Router`) as required by `ccr` v2.x.
 - The router config default is `"anthropic,claude-sonnet-4-20250514"` (format: `provider,model`).
 - `claude-switch` runs in the current shell but prints `export`/`unset` instructions for the user to apply manually (environment variable changes don't persist from the script).
 - The `claude-switch` script accepts aliases: `cloud`/`api` for anthropic, `local` for ollama. Default command (no args) is `status`.

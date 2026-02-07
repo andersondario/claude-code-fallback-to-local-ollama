@@ -38,7 +38,7 @@ switch_to_anthropic() {
     if [ -f "$CONFIG_FILE" ]; then
         # Use jq if available, otherwise sed
         if command -v jq &> /dev/null; then
-            jq '.router.default = "anthropic,claude-sonnet-4-20250514"' "$CONFIG_FILE" > "$CONFIG_FILE.tmp" && \
+            jq '.Router.default = "anthropic,claude-sonnet-4-20250514"' "$CONFIG_FILE" > "$CONFIG_FILE.tmp" && \
                 mv "$CONFIG_FILE.tmp" "$CONFIG_FILE"
         else
             sed -i '' 's/"default":.*"ollama[^"]*"/"default": "anthropic,claude-sonnet-4-20250514"/' "$CONFIG_FILE"
@@ -68,8 +68,8 @@ switch_to_ollama() {
     if [ -f "$CONFIG_FILE" ]; then
         if command -v jq &> /dev/null; then
             # Get first available ollama model from config
-            MODEL=$(jq -r '.providers[] | select(.name=="ollama") | .models[0]' "$CONFIG_FILE")
-            jq --arg model "ollama,$MODEL" '.router.default = $model' "$CONFIG_FILE" > "$CONFIG_FILE.tmp" && \
+            MODEL=$(jq -r '.Providers[] | select(.name=="ollama") | .models[0]' "$CONFIG_FILE")
+            jq --arg model "ollama,$MODEL" '.Router.default = $model' "$CONFIG_FILE" > "$CONFIG_FILE.tmp" && \
                 mv "$CONFIG_FILE.tmp" "$CONFIG_FILE"
         else
             sed -i '' 's/"default":.*"anthropic[^"]*"/"default": "ollama,qwen2.5-coder:7b"/' "$CONFIG_FILE"
@@ -98,7 +98,7 @@ show_status() {
     echo "Router config default:"
     if [ -f "$CONFIG_FILE" ]; then
         if command -v jq &> /dev/null; then
-            jq -r '.router.default' "$CONFIG_FILE"
+            jq -r '.Router.default' "$CONFIG_FILE"
         else
             grep '"default"' "$CONFIG_FILE"
         fi
